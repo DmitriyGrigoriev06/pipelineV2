@@ -86,8 +86,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Scan with ClamAV
-        uses: djdefi/clamav-action@v1
+      - name: Git AV Scan
+        uses: djdefi/gitavscan@main
 
   # 0c) Лейблы после успешных блоков
   label_tests:
