@@ -209,6 +209,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/pipeline:v${{ needs.version_and_changelog.outputs.new_version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/pipeline:latest
@@ -234,7 +235,7 @@ jobs:
           VERSION: ${{ needs.version_and_changelog.outputs.new_version }}
         run: |
           set -e
-          MSG="Выпуск v${VERSION} опубликован. Образ: docker.io/grigorievda21/pipeline:v${VERSION}"
+          MSG="Выпуск v${VERSION} опубликован. Образ: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/pipeline:v${VERSION}"
           curl -s -X POST https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage \
             -d chat_id=${TELEGRAM_CHAT_ID} \
             -d parse_mode=Markdown \
@@ -250,6 +251,7 @@ jobs:
       - name: Deploy via docker compose
         env:
           APP_VERSION: ${{ needs.version_and_changelog.outputs.new_version }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           docker compose pull
           docker compose up -d
