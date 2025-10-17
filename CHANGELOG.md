@@ -1,3 +1,6 @@
+## v1.5.0 — 2025-10-17
+- Merge PR #6 from feature/final-app-text-update by @DmitriyGrigoriev06
+
 ## v1.4.0 — 2025-10-17
 - Merge PR #5 from feature/fifth-app-text-update by @DmitriyGrigoriev06
 
