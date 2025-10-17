@@ -1,0 +1,170 @@
+name: Release Pipeline
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  version_and_changelog:
+    if: >-
+      ${{ github.event.pull_request.merged == true &&
+          github.event.pull_request.base.ref == 'main' &&
+          (startsWith(github.event.pull_request.head.ref, 'feature/') ||
+           startsWith(github.event.pull_request.head.ref, 'hotfix/')) }}
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Detect update type
+        id: dtype
+        run: |
+          BR='${{ github.event.pull_request.head.ref }}'
+          TYPE="${BR%%/*}"
+          echo "UPDATE_TYPE=$TYPE" >> $GITHUB_ENV
+      - name: Bump version
+        id: bump
+        run: |
+          OUT=$(node scripts/version-bump.js)
+          echo "$OUT" > bump.json
+          NEWV=$(node -e "console.log(JSON.parse(require('fs').readFileSync('bump.json','utf8')).newV)")
+          OLDV=$(node -e "console.log(JSON.parse(require('fs').readFileSync('bump.json','utf8')).oldV)")
+          echo "new_version=$NEWV" >> $GITHUB_OUTPUT
+          echo "old_version=$OLDV" >> $GITHUB_OUTPUT
+      - name: Commit version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version
+          git commit -m "[${{ steps.bump.outputs.new_version }}] <-- [${{ steps.bump.outputs.old_version }}] ($UPDATE_TYPE up)" || echo "No changes"
+          git push
+      - name: Update CHANGELOG
+        env:
+          META: >-
+            {"newV":"${{ steps.bump.outputs.new_version }}","pr":"${{ github.event.pull_request.number }}","branch":"${{ github.event.pull_request.head.ref }}","user":"${{ github.actor }}"}
+        run: node scripts/changelog-update.js
+      - name: Commit changelog
+        run: |
+          git add CHANGELOG.md
+          git commit -m "changelog: v${{ steps.bump.outputs.new_version }}" || echo "No changes"
+          git push
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog-md
+          path: CHANGELOG.md
+      - name: Label PR with version and changelog
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const newV = '${{ steps.bump.outputs.new_version }}'
+            await github.rest.issues.addLabels({
+              issue_number: context.payload.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: [newV, 'changelog']
+            })
+
+  docker_build_and_push:
+    needs: [version_and_changelog]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            grigorievda21/pipeline:v${{ needs.version_and_changelog.outputs.new_version }}
+            grigorievda21/pipeline:latest
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: grigorievda21/pipeline
+
+  telegram_notify:
+    needs: [version_and_changelog, docker_build_and_push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: changelog-md
+          path: .
+      - name: Notify Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          VERSION: ${{ needs.version_and_changelog.outputs.new_version }}
+        run: |
+          set -e
+          MSG="Выпуск v${VERSION} опубликован. Образ: docker.io/grigorievda21/pipeline:v${VERSION}"
+          curl -s -X POST https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage \
+            -d chat_id=${TELEGRAM_CHAT_ID} \
+            -d parse_mode=Markdown \
+            -d text="$MSG"
+          curl -s -F chat_id=${TELEGRAM_CHAT_ID} -F document=@CHANGELOG.md \
+            https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument
+
+  deploy_prod:
+    needs: [version_and_changelog, docker_build_and_push]
+    runs-on: [self-hosted, prod-runner]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Deploy via docker compose
+        env:
+          APP_VERSION: ${{ needs.version_and_changelog.outputs.new_version }}
+        run: |
+          docker compose pull
+          docker compose up -d
+      - name: Label PR as prod
+        if: ${{ github.event.pull_request.number != '' }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.payload.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['prod']
+            })
+
+  github_release:
+    needs: [version_and_changelog, deploy_prod]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: changelog-md
+          path: .
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version_and_changelog.outputs.new_version }}
+          name: v${{ needs.version_and_changelog.outputs.new_version }}
+          body_path: CHANGELOG.md
+          files: |
+            CHANGELOG.md
+
+

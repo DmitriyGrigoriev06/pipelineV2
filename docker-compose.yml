@@ -1,0 +1,8 @@
+services:
+  app:
+    image: grigorievda21/pipeline:v${APP_VERSION}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+
