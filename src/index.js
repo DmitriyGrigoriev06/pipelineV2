@@ -5,7 +5,7 @@ const express = require('express')
 const app = express()
 
 app.get('/', (_req, res) => {
-  res.send('Это текст четвертой версии')
+  res.send('Свежий текст новой версии')
 })
 
 const port = process.env.PORT || 8080
