@@ -23,8 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npm test
 
   integration:
@@ -60,8 +59,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npm run lint
 
   npm-audit:
@@ -76,8 +74,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npm audit --omit=dev --audit-level=high
 
   clamav:
@@ -90,7 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Scan with ClamAV
-        uses: crazy-max/ghaction-clamav@v3
+        uses: djdefi/clamav-action@v1
 
   # 0c) Лейблы после успешных блоков
   label_tests:
@@ -146,8 +143,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - name: Detect update type
         id: dtype
         run: |
