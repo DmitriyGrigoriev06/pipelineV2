@@ -210,14 +210,14 @@ jobs:
           context: .
           push: true
           tags: |
-            grigorievda21/pipeline:v${{ needs.version_and_changelog.outputs.new_version }}
-            grigorievda21/pipeline:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/pipeline:v${{ needs.version_and_changelog.outputs.new_version }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/pipeline:latest
       - name: Update Docker Hub description
         uses: peter-evans/dockerhub-description@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: grigorievda21/pipeline
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/pipeline
 
   telegram_notify:
     needs: [version_and_changelog, docker_build_and_push]
